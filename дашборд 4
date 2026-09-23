@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дашборд освоения бюджета</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f1419; color: #e0e0e0; padding: 20px; min-height: 100vh; }
+        .dashboard { max-width: 1800px; margin: 0 auto; }
+        .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab { padding: 12px 24px; background: #1e2a3a; color: #a0aec0; border: 1px solid #2d3748; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .tab:hover { background: #2d3748; color: #e0e0e0; }
+        .tab.active { background: rgb(0, 180, 115); color: #0f1419; border-color: rgb(0, 180, 115); font-weight: 600; }
+        .upload-section { background: #1e2a3a; border: 2px dashed rgb(0, 180, 115); border-radius: 8px; padding: 40px; text-align: center; margin-bottom: 20px; }
+        .upload-section h2 { color: rgb(0, 180, 115); margin-bottom: 20px; font-size: 18px; }
+        .file-input-wrapper { position: relative; display: inline-block; margin: 10px; }
+        .file-input-wrapper input[type=file] { position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+        .file-input-button { display: inline-block; padding: 14px 32px; background: rgb(0, 180, 115); color: #0f1419; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 15px; transition: all 0.3s; }
+        .file-input-button:hover { background: rgb(0, 200, 130); }
+        .file-name { margin-top: 15px; font-size: 14px; color: #a0aec0; }
+        .error-message { color: rgb(240, 60, 70); margin-top: 10px; font-size: 14px; background: rgba(240, 60, 70, 0.1); padding: 10px; border-radius: 4px; }
+        .success-message { color: rgb(0, 180, 115); margin-top: 10px; font-size: 14px; }
+        .dashboard-content { display: none; }
+        .filter-section { background: #1e2a3a; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .filter-title { font-size: 14px; color: #a0aec0; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .month-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+        .month-btn { padding: 8px 16px; background: #2d3748; color: #e0e0e0; border: 1px solid #4a5568; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .month-btn:hover { background: #4a5568; }
+        .month-btn.active { background: rgb(0, 180, 115); color: #0f1419; border-color: rgb(0, 180, 115); font-weight: 600; }
+        .filter-status { font-size: 12px; color: #718096; }
+        .filter-status span { color: rgb(0, 180, 115); font-weight: 600; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .card { background: #1e2a3a; border: 1px solid #2d3748; border-radius: 8px; padding: 24px; }
+        .card-title { font-size: 16px; font-weight: 600; color: rgb(0, 180, 115); margin-bottom: 20px; }
+        .donut-wrapper { position: relative; max-width: 600px; margin: 0 auto; height: 500px; display: flex; align-items: center; justify-content: center; }
+        .donut-wrapper canvas { max-width: 100%; max-height: 100%; }
+        .donut-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 42px; font-weight: bold; color: rgb(0, 180, 115); z-index: 10; pointer-events: none; }
+        .legend { display: flex; justify-content: center; gap: 24px; margin-top: 20px; font-size: 13px; }
+        .legend-item { display: flex; align-items: center; gap: 8px; color: #a0aec0; }
+        .legend-color { width: 16px; height: 16px; border-radius: 3px; }
+        .method-chart-wrapper { height: 500px; }
+        .monthly-chart-wrapper { height: 550px; }
+        .table-container { overflow-x: auto; max-height: 550px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { padding: 14px 16px; text-align: center; font-weight: 600; background: #2d3748; color: #e0e0e0; border-bottom: 2px solid #4a5568; position: sticky; top: 0; font-size: 14px; }
+        td { padding: 14px 16px; border-bottom: 1px solid #2d3748; color: #e0e0e0; font-size: 14px; }
+        td:first-child { text-align: left; }
+        td:not(:first-child) { text-align: right; }
+        tr:nth-child(even) { background: #1a2332; }
+        tr:hover { background: #2d3748; }
+        .no-data { text-align: center; padding: 40px; color: #718096; font-size: 14px; }
+        .table-wrapper { overflow-x: auto; max-height: 700px; overflow-y: auto; border-radius: 6px; }
+        .department-table, .details-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; background: #1e2a3a; }
+        .department-table th, .department-table td, .details-table th, .details-table td { border: 1px solid #2d3748; padding: 10px 12px; text-align: right; white-space: nowrap; }
+        .department-table th, .details-table th { background: #2d3748; color: #e0e0e0; font-weight: 600; position: sticky; top: 0; z-index: 10; }
+        .department-table th:first-child, .department-table td:first-child, .details-table th:first-child, .details-table td:first-child { text-align: left; position: sticky; left: 0; background: #1e2a3a; z-index: 2; border-right: 2px solid #4a5568; min-width: 250px; }
+        .department-table th:first-child, .details-table th:first-child { z-index: 12; }
+        .department-table tr:nth-child(even), .details-table tr:nth-child(even) { background: #1a2332; }
+        .department-table tr:nth-child(odd), .details-table tr:nth-child(odd) { background: #1e2a3a; }
+        .department-table tr:hover, .details-table tr:hover { background: #2d3748; }
+        .department-table tr:last-child, .details-table tr.grand-total { font-weight: bold; background: #2d3748 !important; }
+        .department-table tr:last-child td:first-child, .details-table tr.grand-total td:first-child { background: #2d3748 !important; }
+        .highlight-red { background-color: #FFC7CE !important; color: #9C0006 !important; font-weight: bold; }
+        .legend-box { margin-top: 15px; padding: 10px; background: rgba(255, 199, 206, 0.1); border-radius: 4px; font-size: 12px; color: #e0e0e0; }
+        .legend-box span { color: #9C0006; font-weight: bold; }
+        .export-button { display: inline-block; padding: 10px 20px; background: rgb(0, 180, 115); color: #0f1419; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; margin-top: 15px; transition: all 0.3s; }
+        .export-button:hover { background: rgb(0, 200, 130); }
+        .loading { display: none; text-align: center; padding: 20px; }
+        .spinner { border: 3px solid #2d3748; border-top: 3px solid rgb(0, 180, 115); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .info-bar { margin-bottom: 15px; padding: 10px 15px; background: rgba(0, 180, 115, 0.1); border-left: 3px solid rgb(0, 180, 115); border-radius: 4px; font-size: 13px; color: rgb(0, 180, 115); }
+        .section-header { background: linear-gradient(135deg, #ffd700 0%, #ffcc00 100%) !important; color: #0f1419 !important; font-weight: bold; font-size: 13px; }
+        .section-header td { background: linear-gradient(135deg, #ffd700 0%, #ffcc00 100%) !important; color: #0f1419 !important; border: 1px solid #cc9900; text-align: left; padding: 10px 12px; }
+        .section-header td:first-child { background: linear-gradient(135deg, #ffd700 0%, #ffcc00 100%) !important; }
+        .section-total { background: #1a2332 !important; font-weight: bold; border-top: 2px solid #4a5568; color: rgb(0, 180, 115); }
+        .section-total td:first-child { background: #1a2332 !important; }
+        .zebra-even { background: #1e2a3a; }
+        .zebra-odd { background: #1a2332; }
+        .section-summary { float: right; font-size: 11px; color: #0f1419; font-weight: 600; }
+        .forecast-overrun { background-color: rgba(240, 60, 70, 0.15) !important; color: #f03c46 !important; font-weight: bold; }
+        .forecast-safe { color: rgb(0, 180, 115); }
+        .forecast-partial { background-color: rgba(96, 165, 250, 0.15) !important; color: #60a5fa !important; font-weight: bold; }
+        .forecast-chart-card { margin-bottom: 20px; }
+        .forecast-month-selector { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .forecast-month-btn { padding: 8px 16px; background: #2d3748; color: #e0e0e0; border: 1px solid #4a5568; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .forecast-month-btn:hover { background: #4a5568; }
+        .forecast-month-btn.selected { background: rgb(240, 60, 70) !important; color: #ffffff !important; border-color: rgb(240, 60, 70) !important; font-weight: 600 !important; }
+        @media (max-width: 768px) { .dashboard-grid { grid-template-columns: 1fr; } .month-buttons { justify-content: center; } .month-btn { padding: 6px 12px; font-size: 12px; } }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="upload-section" id="uploadSection">
+            <h2>Загрузка данных из Excel файла</h2>
+            <div class="file-input-wrapper">
+                <div class="file-input-button">📁 Выберите файл Excel</div>
+                <input type="file" id="fileInput" accept=".xlsx,.xls" />
+            </div>
+            <div id="fileName" class="file-name"></div>
+            <div id="message"></div>
+        </div>
+
+        <div id="dashboardContent" class="dashboard-content">
+            <div class="tabs">
+                <div class="tab active" data-tab="managerial">Управленческий учет</div>
+                <div class="tab" data-tab="departments">Затраты по отделам</div>
+                <div class="tab" data-tab="details">Детализация по разделам</div>
+                <div class="tab" data-tab="forecast">Прогноз освоения</div>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-title">📅 Фильтр по месяцам:</div>
+                <div class="month-buttons">
+                    <button class="month-btn active" data-month="all">Все</button>
+                    <button class="month-btn" data-month="1">Янв</button>
+                    <button class="month-btn" data-month="2">Фев</button>
+                    <button class="month-btn" data-month="3">Мар</button>
+                    <button class="month-btn" data-month="4">Апр</button>
+                    <button class="month-btn" data-month="5">Май</button>
+                    <button class="month-btn" data-month="6">Июн</button>
+                    <button class="month-btn" data-month="7">Июл</button>
+                    <button class="month-btn" data-month="8">Авг</button>
+                    <button class="month-btn" data-month="9">Сен</button>
+                    <button class="month-btn" data-month="10">Окт</button>
+                    <button class="month-btn" data-month="11">Ноя</button>
+                    <button class="month-btn" data-month="12">Дек</button>
+                </div>
+                <div class="filter-status">Показаны данные за: <span id="filterStatusText">все месяцы</span></div>
+            </div>
+
+            <div class="tab-content active" id="managerialTab">
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <div class="card-title">Освоение бюджета, тыс. руб</div>
+                        <div class="donut-wrapper">
+                            <canvas id="donutChart"></canvas>
+                            <div class="donut-center" id="donutCenter">0%</div>
+                        </div>
+                        <div class="legend">
+                            <div class="legend-item"><div class="legend-color" style="background: rgb(153, 153, 153);"></div><span>План</span></div>
+                            <div class="legend-item"><div class="legend-color" style="background: rgb(0, 180, 115);"></div><span>Факт</span></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">По способу проведения, тыс. руб</div>
+                        <div class="method-chart-wrapper"><canvas id="methodChart"></canvas></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Освоение по месяцам, тыс. руб</div>
+                        <div class="monthly-chart-wrapper"><canvas id="monthlyChart"></canvas></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Детализация по заказчикам, тыс. руб</div>
+                        <div class="table-container">
+                            <table id="dataTable">
+                                <thead><tr><th>Заказчик</th><th>План</th><th>Факт</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="departmentsTab">
+                <div class="card">
+                    <div class="card-title">Затраты по отделам, тыс. руб</div>
+                    <div class="loading" id="loading"><div class="spinner"></div><div>Обработка данных...</div></div>
+                    <div class="table-wrapper">
+                        <table class="department-table" id="departmentTable"><thead></thead><tbody></tbody></table>
+                    </div>
+                    <div class="legend-box">🔴 <span>Красным выделены случаи, когда Факт превышает План</span></div>
+                    <button class="export-button" id="exportButton">📥 Экспорт в Excel</button>
+                </div>
+            </div>
+
+            <div class="tab-content" id="detailsTab">
+                <div class="card">
+                    <div class="card-title">Детализация по направлениям, тыс. руб</div>
+                    <div class="loading" id="loadingDetails"><div class="spinner"></div><div>Обработка данных...</div></div>
+                    <div class="info-bar" id="infoBar"></div>
+                    <div class="table-wrapper">
+                        <table class="details-table" id="detailsTable"><thead></thead><tbody></tbody></table>
+                    </div>
+                    <div class="legend-box"> <span>Красным выделены случаи, когда Факт превышает План</span></div>
+                    <button class="export-button" id="exportDetailsButton">📥 Экспорт в Excel</button>
+                </div>
+            </div>
+
+            <div class="tab-content" id="forecastTab">
+                <div class="info-bar">📊 Прогноз строится исключительно на абсолютных значениях факта выбранных вами месяцев.</div>
+                
+                <div class="dashboard-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px;">
+                    <div class="card" style="text-align: center;">
+                        <div style="font-size: 13px; color: #a0aec0; margin-bottom: 8px;">Всего бюджет</div>
+                        <div id="kpiTotalBudget" style="font-size: 24px; font-weight: bold; color: #e0e0e0;">0 тыс. руб</div>
+                    </div>
+                    <div class="card" style="text-align: center;">
+                        <div style="font-size: 13px; color: #a0aec0; margin-bottom: 8px;">Освоено (факт)</div>
+                        <div id="kpiActual" style="font-size: 24px; font-weight: bold; color: rgb(0, 180, 115);">0 тыс. руб</div>
+                    </div>
+                    <div class="card" style="text-align: center;">
+                        <div style="font-size: 13px; color: #a0aec0; margin-bottom: 8px;">Остаток</div>
+                        <div id="kpiRemaining" style="font-size: 24px; font-weight: bold; color: #ffd700;">0 тыс. руб</div>
+                    </div>
+                    <div class="card" style="text-align: center;">
+                        <div style="font-size: 13px; color: #a0aec0; margin-bottom: 8px;">Прогноз на конец года</div>
+                        <div id="kpiForecast" style="font-size: 24px; font-weight: bold; color: #60a5fa;">0 тыс. руб</div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-title">️ База для прогноза: выберите месяцы (можно несколько)</div>
+                    <div class="forecast-month-selector" id="forecastMonthSelector">
+                        <button class="forecast-month-btn selected" data-month="all">Все закрытые</button>
+                        <button class="forecast-month-btn" data-month="1">Янв</button>
+                        <button class="forecast-month-btn" data-month="2">Фев</button>
+                        <button class="forecast-month-btn" data-month="3">Мар</button>
+                        <button class="forecast-month-btn" data-month="4">Апр</button>
+                        <button class="forecast-month-btn" data-month="5">Май</button>
+                        <button class="forecast-month-btn" data-month="6">Июн</button>
+                        <button class="forecast-month-btn" data-month="7">Июл</button>
+                        <button class="forecast-month-btn" data-month="8">Авг</button>
+                        <button class="forecast-month-btn" data-month="9">Сен</button>
+                        <button class="forecast-month-btn" data-month="10">Окт</button>
+                        <button class="forecast-month-btn" data-month="11">Ноя</button>
+                        <button class="forecast-month-btn" data-month="12">Дек</button>
+                    </div>
+                </div>
+
+                <div class="card forecast-chart-card">
+                    <div class="card-title">📈 Накопительный прогноз освоения</div>
+                    <div class="monthly-chart-wrapper"><canvas id="cumulativeForecastChart"></canvas></div>
+                </div>
+
+                <div class="card forecast-chart-card">
+                    <div class="card-title">📊 Помесячное освоение бюджета</div>
+                    <div class="monthly-chart-wrapper"><canvas id="monthlyForecastChart"></canvas></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">📋 Детальный прогноз по месяцам</div>
+                    <div class="table-wrapper">
+                        <table class="details-table" id="forecastTable">
+                            <thead>
+                                <tr>
+                                    <th>Месяц</th>
+                                    <th>План (мес)</th>
+                                    <th>Факт (мес)</th>
+                                    <th>Прогноз (мес)</th>
+                                    <th>План (накоп.)</th>
+                                    <th>Факт (накоп.)</th>
+                                    <th>Прогноз (накоп.)</th>
+                                    <th>Отклонение</th>
+                                </tr>
+                            </thead>
+                            <tbody id="forecastTableBody">
+                                <tr><td colspan="8" class="no-data">Загрузите данные для расчета прогноза</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="legend-box" style="margin-top: 15px;">
+                        🔵 <span style="color: #60a5fa;">Синим</span> выделен текущий неполный месяц<br>
+                        🔴 <span>Красным</span> выделены превышения прогноза над планом
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        Chart.register(ChartDataLabels);
+
+        let rawData = [];
+        let currentMonth = 'all';
+        let donutChart, methodChart, monthlyChart;
+        let processedData = null;
+        let selectedForecastMonths = [];
+        let cumulativeChartInstance = null;
+        let monthlyForecastChartInstance = null;
+
+        const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+        const monthNamesFull = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+        const methodOrder = ['Без бригадные ГИС','Бригадные ГИС','Работа с пластом','Добыча нефти мет.свабирования','Технологическое свабирование'];
+        const customerMapping = [
+            { pattern: /УГТМ\s*ОПиГСРС/i, name: 'УГТМ ОПиГСРС' },
+            { pattern: /УГТМ\s*ОПиГСБС/i, name: 'УГТМ ОПиГСБС' },
+            { pattern: /УГТМ\s*ОГРП/i, name: 'УГТМ ОГРП' },
+            { pattern: /УГТМ\s*ОМУН/i, name: 'УГТМ ОМУН' },
+            { pattern: /УГТМ\s*ООПЗП/i, name: 'УГТМ ООПЗП' },
+            { pattern: /УДНГ\s*ОПТРС/i, name: 'УДНГ ОПТРС' },
+            { pattern: /УДНГ\s*ОТиТДН/i, name: 'УДНГ ОТиТДН' },
+            { pattern: /УДНГ\s*ОЭФС/i, name: 'УДНГ ОЭФС' },
+            { pattern: /программа\s+исследовательских\s+работ/i, name: 'Программа исследовательских работ/мероприятий' },
+            { pattern: /ОМРМИН/i, name: 'ОМРМИН' },
+            { pattern: /ТатНИПИ/i, name: 'ТатНИПИ' },
+            { pattern: /\bУРМ\b/i, name: 'УРМ' },
+            { pattern: /\bООД\b/i, name: 'ООД' },
+            { pattern: /\bГРР\b/i, name: 'ГРР' },
+            { pattern: /прочие/i, name: 'Не распределенный объем' }
+        ];
+
+        function formatNumber(num) {
+            if (num === null || num === undefined || isNaN(num)) return '0';
+            return Math.round(num).toLocaleString('ru-RU');
+        }
+
+        function parseMonthFromDate(dateStr) {
+            if (!dateStr) return null;
+            if (typeof dateStr === 'string') {
+                const parts = dateStr.split(/[\/.\-]/);
+                if (parts.length === 3) {
+                    const day = parseInt(parts[0]);
+                    const month = parseInt(parts[1]);
+                    const year = parseInt(parts[2]);
+                    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                        return { month, year: year < 50 ? 2000 + year : 1900 + year };
+                    }
+                }
+                const date = new Date(dateStr);
+                if (!isNaN(date.getTime())) return { month: date.getMonth() + 1, year: date.getFullYear() };
+            } else if (typeof dateStr === 'number') {
+                const date = new Date(Math.round((dateStr - 25569) * 86400 * 1000));
+                if (!isNaN(date.getTime())) return { month: date.getMonth() + 1, year: date.getFullYear() };
+            } else if (dateStr instanceof Date) {
+                return { month: dateStr.getMonth() + 1, year: dateStr.getFullYear() };
+            }
+            return null;
+        }
+
+        function normalizeCustomer(name) {
+            if (!name) return 'Не распределенный объем';
+            const str = String(name).trim();
+            if (str === '') return 'Не распределенный объем';
+            for (const mapping of customerMapping) if (mapping.pattern.test(str)) return mapping.name;
+            return str;
+        }
+
+        function processData(workbook) {
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true });
+            if (data.length < 2) throw new Error('Файл не содержит данных');
+            const headers = data[0].map(h => String(h || '').toLowerCase().trim());
+            const colIndex = {
+                customer: headers.findIndex(h => h.includes('заказчик')),
+                method: headers.findIndex(h => h.includes('способ') || h.includes('проведения')),
+                criteria: headers.findIndex(h => h.includes('критерий')),
+                month: headers.findIndex(h => h.includes('месяц')),
+                costs: headers.findIndex(h => h.includes('затраты'))
+            };
+            rawData = [];
+            let minDate = null, maxDate = null;
+            for (let i = 1; i < data.length; i++) {
+                const row = data[i];
+                if (!row || row.length === 0) continue;
+                const rawCustomer = colIndex.customer >= 0 ? row[colIndex.customer] : '';
+                const customer = normalizeCustomer(rawCustomer);
+                const method = colIndex.method >= 0 ? String(row[colIndex.method] || '').trim() : '';
+                const criteria = colIndex.criteria >= 0 ? String(row[colIndex.criteria] || '').trim() : '';
+                const monthCell = colIndex.month >= 0 ? row[colIndex.month] : null;
+                let costs = 0;
+                if (colIndex.costs >= 0) {
+                    const costVal = row[colIndex.costs];
+                    if (typeof costVal === 'number') costs = costVal;
+                    else if (typeof costVal === 'string') costs = parseFloat(costVal.replace(',', '.')) || 0;
+                }
+                const dateInfo = parseMonthFromDate(monthCell);
+                const isPlan = criteria.toLowerCase().includes('план');
+                const isFact = criteria.toLowerCase().includes('факт');
+                if (!isPlan && !isFact) continue;
+                if (!dateInfo) continue;
+                const currentDate = new Date(dateInfo.year, dateInfo.month - 1);
+                if (!minDate || currentDate < minDate) minDate = currentDate;
+                if (!maxDate || currentDate > maxDate) maxDate = currentDate;
+                rawData.push({ customer, method, criteria: isPlan ? 'План' : 'Факт', month: dateInfo.month, year: dateInfo.year, costs });
+            }
+            return { minDate, maxDate };
+        }
+
+        function getFilteredData() {
+            if (currentMonth === 'all') return rawData;
+            return rawData.filter(d => d.month.toString() === currentMonth);
+        }
+
+        function aggregateData(data) {
+            const donut = { plan: 0, fact: 0 };
+            const methodsMap = new Map(), monthlyMap = new Map(), customersMap = new Map();
+            for (let i = 1; i <= 12; i++) monthlyMap.set(i, { plan: 0, fact: 0 });
+            data.forEach(d => {
+                if (d.criteria === 'План') donut.plan += d.costs; else donut.fact += d.costs;
+                if (d.method) {
+                    if (!methodsMap.has(d.method)) methodsMap.set(d.method, { plan: 0, fact: 0 });
+                    const m = methodsMap.get(d.method);
+                    if (d.criteria === 'План') m.plan += d.costs; else m.fact += d.costs;
+                }
+                if (monthlyMap.has(d.month)) {
+                    const m = monthlyMap.get(d.month);
+                    if (d.criteria === 'План') m.plan += d.costs; else m.fact += d.costs;
+                }
+                if (d.customer) {
+                    if (!customersMap.has(d.customer)) customersMap.set(d.customer, { plan: 0, fact: 0 });
+                    const c = customersMap.get(d.customer);
+                    if (d.criteria === 'План') c.plan += d.costs; else c.fact += d.costs;
+                }
+            });
+            return {
+                donut,
+                methods: Array.from(methodsMap.entries()).map(([name, data]) => ({ name, ...data })),
+                monthly: Array.from(monthlyMap.entries()).sort((a, b) => a[0] - b[0]).map(([monthNum, data]) => ({ month: monthNames[monthNum - 1], monthNum, ...data })),
+                customers: Array.from(customersMap.entries()).map(([name, data]) => ({ name, ...data }))
+            };
+        }
+
+        function updateDonutChart(data) {
+            const ctx = document.getElementById('donutChart').getContext('2d');
+            const percentage = data.donut.plan > 0 ? Math.round((data.donut.fact / data.donut.plan) * 100) : 0;
+            document.getElementById('donutCenter').textContent = percentage + '%';
+            if (donutChart) donutChart.destroy();
+            if (data.donut.plan === 0 && data.donut.fact === 0) {
+                donutChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: { labels: ['План', 'Факт'], datasets: [{ data: [1, 1], backgroundColor: ['rgb(128, 128, 130)', 'rgb(128, 128, 130)'], borderWidth: 0 }] },
+                    options: { responsive: true, maintainAspectRatio: true, cutout: '65%', devicePixelRatio: window.devicePixelRatio || 1, plugins: { legend: { display: false }, tooltip: { enabled: false }, datalabels: { display: false } } }
+                });
+                return;
+            }
+            donutChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: { labels: ['План', 'Факт'], datasets: [{ data: [data.donut.plan, data.donut.fact], backgroundColor: ['rgb(153, 153, 153)', 'rgb(0, 180, 115)'], borderWidth: 0 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: true, cutout: '65%', devicePixelRatio: window.devicePixelRatio || 1,
+                    layout: { padding: { top: 80, right: 80, bottom: 80, left: 80 } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: function(context) { return context.label + ': ' + formatNumber(context.raw / 1000) + ' тыс. руб'; } } },
+                        datalabels: { display: true, color: '#ffffff', font: { size: 15, weight: 'bold', family: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif" }, formatter: function(value) { return formatNumber(value / 1000); }, anchor: 'end', align: 'end', offset: 15, clamp: true, textBaseline: 'middle', textAlign: 'center' }
+                    }
+                }
+            });
+        }
+
+        function updateMethodChart(data) {
+            const ctx = document.getElementById('methodChart').getContext('2d');
+            if (methodChart) methodChart.destroy();
+            if (data.methods.length === 0) {
+                methodChart = new Chart(ctx, { type: 'bar', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false } });
+                return;
+            }
+            const maxValue = Math.max(...data.methods.map(m => Math.max(m.plan, m.fact)), 100000);
+            const roundedMax = Math.ceil(maxValue / 100000) * 100000;
+            methodChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.methods.map(m => m.name.length > 30 ? m.name.substring(0, 30) + '...' : m.name),
+                    datasets: [
+                        { label: 'План', data: data.methods.map(m => m.plan / 1000), backgroundColor: 'rgb(153, 153, 153)', barPercentage: 0.9, categoryPercentage: 0.9 },
+                        { label: 'Факт', data: data.methods.map(m => m.fact / 1000), backgroundColor: 'rgb(0, 180, 115)', barPercentage: 0.9, categoryPercentage: 0.9 }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio || 1, layout: { padding: { right: 80 } },
+                    scales: {
+                        x: { beginAtZero: true, max: roundedMax / 1000, ticks: { stepSize: (roundedMax / 1000) / 7, callback: function(value) { return formatNumber(value); }, color: '#a0aec0', font: { size: 13 } }, grid: { color: '#2d3748' } },
+                        y: { ticks: { font: { size: 15 }, color: '#e0e0e0' }, grid: { color: '#2d3748' } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: function(context) { return context.dataset.label + ': ' + formatNumber(context.raw) + ' тыс. руб'; } } },
+                        datalabels: { anchor: 'end', align: 'end', offset: 4, color: '#e0e0e0', font: { size: 13, weight: '600' }, formatter: function(value) { return value === 0 ? '' : formatNumber(value); } }
+                    }
+                }
+            });
+        }
+
+        function updateMonthlyChart(data) {
+            const ctx = document.getElementById('monthlyChart').getContext('2d');
+            if (monthlyChart) monthlyChart.destroy();
+            const maxValue = Math.max(...data.monthly.map(m => Math.max(m.plan, m.fact)), 100000);
+            const roundedMax = Math.ceil(maxValue / 100000) * 100000;
+            const colors = {
+                plan: data.monthly.map(m => currentMonth === 'all' || m.monthNum.toString() === currentMonth ? 'rgb(153, 153, 153)' : 'rgb(128, 128, 130)'),
+                fact: data.monthly.map(m => currentMonth === 'all' || m.monthNum.toString() === currentMonth ? 'rgb(0, 180, 115)' : 'rgb(0, 100, 70)')
+            };
+            monthlyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.monthly.map(m => m.month),
+                    datasets: [
+                        { label: 'План', data: data.monthly.map(m => m.plan / 1000), backgroundColor: colors.plan, barPercentage: 0.9, categoryPercentage: 0.9 },
+                        { label: 'Факт', data: data.monthly.map(m => m.fact / 1000), backgroundColor: colors.fact, barPercentage: 0.9, categoryPercentage: 0.9 }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio || 1, layout: { padding: { right: 80 } },
+                    scales: {
+                        x: { beginAtZero: true, max: roundedMax / 1000, ticks: { stepSize: (roundedMax / 1000) / 8, callback: function(value) { return formatNumber(value); }, color: '#a0aec0', font: { size: 13 } }, grid: { color: '#2d3748' } },
+                        y: { ticks: { font: { size: 15 }, color: '#e0e0e0' }, grid: { color: '#2d3748' } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: function(context) { return context.dataset.label + ': ' + formatNumber(context.raw) + ' тыс. руб'; } } },
+                        datalabels: { anchor: 'end', align: 'end', offset: 4, color: '#e0e0e0', font: { size: 13, weight: '600' }, formatter: function(value) { return value === 0 ? '' : formatNumber(value); } }
+                    }
+                }
+            });
+        }
+
+        function updateTable(data) {
+            const tbody = document.querySelector('#dataTable tbody');
+            tbody.innerHTML = '';
+            if (data.customers.length === 0) { tbody.innerHTML = '<tr><td colspan="3" class="no-data">Нет данных</td></tr>'; return; }
+            data.customers.forEach(customer => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td>${customer.name}</td><td>${formatNumber(customer.plan / 1000)}</td><td>${formatNumber(customer.fact / 1000)}</td>`;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateAllCharts() {
+            const filteredData = getFilteredData();
+            const aggregated = aggregateData(filteredData);
+            updateDonutChart(aggregated);
+            updateMethodChart(aggregated);
+            updateMonthlyChart(aggregated);
+            updateTable(aggregated);
+            const statusText = currentMonth === 'all' ? 'все месяцы' : monthNames[parseInt(currentMonth) - 1];
+            document.getElementById('filterStatusText').textContent = statusText;
+        }
+
+        function determinePeriods(minDate, maxDate) {
+            const periods = [];
+            const presentMonths = new Set();
+            rawData.forEach(d => presentMonths.add(`${d.year}-${d.month}`));
+            const startYear = minDate.getFullYear(), endYear = maxDate.getFullYear();
+            const startMonth = minDate.getMonth() + 1, endMonth = maxDate.getMonth() + 1;
+            for (let year = startYear; year <= endYear; year++) {
+                const startQ = year === startYear ? Math.ceil(startMonth / 3) : 1;
+                const endQ = year === endYear ? Math.ceil(endMonth / 3) : 4;
+                for (let q = startQ; q <= endQ; q++) {
+                    const monthStart = (q - 1) * 3 + 1, monthEnd = monthStart + 2;
+                    const presentInQuarter = [];
+                    for (let m = monthStart; m <= monthEnd; m++) if (presentMonths.has(`${year}-${m}`)) presentInQuarter.push(m);
+                    if (presentInQuarter.length === 3) periods.push({ type: 'quarter', name: `${q} квартал`, year: year, months: presentInQuarter });
+                    else presentInQuarter.forEach(m => periods.push({ type: 'month', name: monthNamesFull[m - 1], year: year, month: m }));
+                }
+            }
+            const totalMonths = rawData.length > 0 ? (maxDate.getFullYear() - minDate.getFullYear()) * 12 + (maxDate.getMonth() - minDate.getMonth()) + 1 : 0;
+            const monthWord = totalMonths === 1 ? 'месяц' : (totalMonths >= 2 && totalMonths <= 4) ? 'месяца' : 'месяцев';
+            periods.push({ type: 'total', name: `Итого за ${totalMonths} ${monthWord}`, totalMonths: totalMonths });
+            return periods;
+        }
+
+        function aggregateDepartmentData(periods) {
+            const customers = new Map();
+            rawData.forEach(d => {
+                if (!customers.has(d.customer)) customers.set(d.customer, { name: d.customer, periods: {}, totalPlan: 0, totalFact: 0 });
+                const cust = customers.get(d.customer);
+                let periodKey = null;
+                for (let i = 0; i < periods.length - 1; i++) {
+                    const p = periods[i];
+                    if (p.type === 'quarter' && p.months.includes(d.month) && p.year === d.year) { periodKey = `${p.year}_Q${p.months[0]}`; break; }
+                    else if (p.type === 'month' && p.month === d.month && p.year === d.year) { periodKey = `${p.year}_M${p.month}`; break; }
+                }
+                if (periodKey) {
+                    if (!cust.periods[periodKey]) cust.periods[periodKey] = { plan: 0, fact: 0 };
+                    if (d.criteria === 'План') { cust.periods[periodKey].plan += d.costs; cust.totalPlan += d.costs; }
+                    else { cust.periods[periodKey].fact += d.costs; cust.totalFact += d.costs; }
+                }
+            });
+            return Array.from(customers.values());
+        }
+
+        function renderDepartmentTable(periods, customers) {
+            const table = document.getElementById('departmentTable');
+            const thead = table.querySelector('thead');
+            const tbody = table.querySelector('tbody');
+            let headerHTML = '<tr><th rowspan="2">Заказчик</th>';
+            periods.slice(0, -1).forEach(p => headerHTML += `<th colspan="2">${p.name}</th>`);
+            headerHTML += `<th colspan="2">${periods[periods.length - 1].name}</th><th rowspan="2">Отклонение</th></tr><tr>`;
+            periods.slice(0, -1).forEach(() => headerHTML += '<th>План</th><th>Факт</th>');
+            headerHTML += '<th>План</th><th>Факт</th></tr>';
+            thead.innerHTML = headerHTML;
+            let totalPlan = 0, totalFact = 0;
+            customers.forEach(cust => {
+                let rowHTML = `<td>${cust.name}</td>`;
+                periods.slice(0, -1).forEach(p => {
+                    let periodKey = p.type === 'quarter' ? `${p.year}_Q${p.months[0]}` : `${p.year}_M${p.month}`;
+                    const data = cust.periods[periodKey] || { plan: 0, fact: 0 };
+                    const planClass = data.fact > data.plan ? 'highlight-red' : '';
+                    rowHTML += `<td>${formatNumber(data.plan / 1000)}</td><td class="${planClass}">${formatNumber(data.fact / 1000)}</td>`;
+                });
+                rowHTML += `<td>${formatNumber(cust.totalPlan / 1000)}</td><td>${formatNumber(cust.totalFact / 1000)}</td>`;
+                const deviation = cust.totalPlan - cust.totalFact;
+                rowHTML += `<td class="${deviation < 0 ? 'highlight-red' : ''}">${formatNumber(deviation / 1000)}</td>`;
+                tbody.innerHTML += `<tr>${rowHTML}</tr>`;
+                totalPlan += cust.totalPlan; totalFact += cust.totalFact;
+            });
+            const totalDeviation = totalPlan - totalFact;
+            let totalRowHTML = '<tr><td>Итого по договору</td>';
+            periods.slice(0, -1).forEach(() => totalRowHTML += '<td>-</td><td>-</td>');
+            totalRowHTML += `<td>${formatNumber(totalPlan / 1000)}</td><td>${formatNumber(totalFact / 1000)}</td><td class="${totalDeviation < 0 ? 'highlight-red' : ''}">${formatNumber(totalDeviation / 1000)}</td></tr>`;
+            tbody.innerHTML += totalRowHTML;
+        }
+
+        function aggregateDetailsData(periods) {
+            const methods = new Map();
+            rawData.forEach(d => {
+                if (!methods.has(d.method)) methods.set(d.method, { name: d.method, customers: new Map(), totalPlan: 0, totalFact: 0 });
+                const method = methods.get(d.method);
+                if (!method.customers.has(d.customer)) method.customers.set(d.customer, { name: d.customer, periods: {}, totalPlan: 0, totalFact: 0 });
+                const customer = method.customers.get(d.customer);
+                let periodKey = null;
+                for (let i = 0; i < periods.length - 1; i++) {
+                    const p = periods[i];
+                    if (p.type === 'quarter' && p.months.includes(d.month) && p.year === d.year) { periodKey = `${p.year}_Q${p.months[0]}`; break; }
+                    else if (p.type === 'month' && p.month === d.month && p.year === d.year) { periodKey = `${p.year}_M${p.month}`; break; }
+                }
+                if (periodKey) {
+                    if (!customer.periods[periodKey]) customer.periods[periodKey] = { plan: 0, fact: 0 };
+                    if (d.criteria === 'План') { customer.periods[periodKey].plan += d.costs; customer.totalPlan += d.costs; method.totalPlan += d.costs; }
+                    else { customer.periods[periodKey].fact += d.costs; customer.totalFact += d.costs; method.totalFact += d.costs; }
+                }
+            });
+            return Array.from(methods.values());
+        }
+
+        function renderDetailsTable(periods, methods) {
+            const table = document.getElementById('detailsTable');
+            const thead = table.querySelector('thead');
+            const tbody = table.querySelector('tbody');
+            tbody.innerHTML = '';
+            let headerHTML = '<tr><th rowspan="2">Направление / Заказчик</th>';
+            periods.slice(0, -1).forEach(p => headerHTML += `<th colspan="2">${p.name}</th>`);
+            headerHTML += `<th colspan="2">${periods[periods.length - 1].name}</th><th rowspan="2">Отклонение</th></tr><tr>`;
+            periods.slice(0, -1).forEach(() => headerHTML += '<th>План</th><th>Факт</th>');
+            headerHTML += '<th>План</th><th>Факт</th></tr>';
+            thead.innerHTML = headerHTML;
+            let grandTotalPlan = 0, grandTotalFact = 0;
+            const sortedMethods = methods.sort((a, b) => {
+                const indexA = methodOrder.indexOf(a.name), indexB = methodOrder.indexOf(b.name);
+                if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                if (indexA !== -1) return -1;
+                if (indexB !== -1) return 1;
+                return a.name.localeCompare(b.name);
+            });
+            sortedMethods.forEach((method) => {
+                const sectionHeaderRow = document.createElement('tr');
+                sectionHeaderRow.className = 'section-header';
+                const methodTotalPercent = method.totalPlan > 0 ? Math.round((method.totalFact / method.totalPlan) * 100) : 0;
+                const sectionSummary = `План: ${formatNumber(method.totalPlan / 1000)} | Факт: ${formatNumber(method.totalFact / 1000)} | ${methodTotalPercent}%`;
+                sectionHeaderRow.innerHTML = `<td colspan="${periods.length * 2 + 1}">${method.name || 'Без направления'} <span class="section-summary">${sectionSummary}</span></td>`;
+                tbody.appendChild(sectionHeaderRow);
+                let methodTotalPlan = 0, methodTotalFact = 0, customerIndex = 0;
+                method.customers.forEach(customer => {
+                    const row = document.createElement('tr');
+                    row.className = customerIndex % 2 === 0 ? 'zebra-even' : 'zebra-odd';
+                    let rowHTML = `<td>${customer.name}</td>`;
+                    periods.slice(0, -1).forEach(p => {
+                        let periodKey = p.type === 'quarter' ? `${p.year}_Q${p.months[0]}` : `${p.year}_M${p.month}`;
+                        const data = customer.periods[periodKey] || { plan: 0, fact: 0 };
+                        const factClass = data.fact > data.plan ? 'highlight-red' : '';
+                        rowHTML += `<td>${formatNumber(data.plan / 1000)}</td><td class="${factClass}">${formatNumber(data.fact / 1000)}</td>`;
+                    });
+                    rowHTML += `<td>${formatNumber(customer.totalPlan / 1000)}</td><td>${formatNumber(customer.totalFact / 1000)}</td>`;
+                    const deviation = customer.totalPlan - customer.totalFact;
+                    rowHTML += `<td class="${deviation < 0 ? 'highlight-red' : ''}">${formatNumber(deviation / 1000)}</td>`;
+                    row.innerHTML = rowHTML;
+                    tbody.appendChild(row);
+                    methodTotalPlan += customer.totalPlan; methodTotalFact += customer.totalFact; customerIndex++;
+                });
+                const sectionTotalRow = document.createElement('tr');
+                sectionTotalRow.className = 'section-total';
+                let sectionTotalHTML = `<td>Итого по направлению</td>`;
+                periods.slice(0, -1).forEach(p => {
+                    let periodKey = p.type === 'quarter' ? `${p.year}_Q${p.months[0]}` : `${p.year}_M${p.month}`;
+                    let periodPlan = 0, periodFact = 0;
+                    method.customers.forEach(customer => {
+                        const data = customer.periods[periodKey] || { plan: 0, fact: 0 };
+                        periodPlan += data.plan; periodFact += data.fact;
+                    });
+                    const factClass = periodFact > periodPlan ? 'highlight-red' : '';
+                    sectionTotalHTML += `<td>${formatNumber(periodPlan / 1000)}</td><td class="${factClass}">${formatNumber(periodFact / 1000)}</td>`;
+                });
+                sectionTotalHTML += `<td>${formatNumber(methodTotalPlan / 1000)}</td><td>${formatNumber(methodTotalFact / 1000)}</td>`;
+                const sectionDeviation = methodTotalPlan - methodTotalFact;
+                sectionTotalHTML += `<td class="${sectionDeviation < 0 ? 'highlight-red' : ''}">${formatNumber(sectionDeviation / 1000)}</td>`;
+                sectionTotalRow.innerHTML = sectionTotalHTML;
+                tbody.appendChild(sectionTotalRow);
+                grandTotalPlan += methodTotalPlan; grandTotalFact += methodTotalFact;
+            });
+            const grandTotalRow = document.createElement('tr');
+            grandTotalRow.className = 'grand-total';
+            let grandTotalHTML = '<td>Итого по всем направлениям</td>';
+            periods.slice(0, -1).forEach(() => grandTotalHTML += '<td>-</td><td>-</td>');
+            grandTotalHTML += `<td>${formatNumber(grandTotalPlan / 1000)}</td><td>${formatNumber(grandTotalFact / 1000)}</td>`;
+            const grandDeviation = grandTotalPlan - grandTotalFact;
+            grandTotalHTML += `<td class="${grandDeviation < 0 ? 'highlight-red' : ''}">${formatNumber(grandDeviation / 1000)}</td>`;
+            grandTotalRow.innerHTML = grandTotalHTML;
+            tbody.appendChild(grandTotalRow);
+        }
+
+        function exportToExcel() {
+            const wb = XLSX.utils.book_new();
+            const wsData = [];
+            const headers = ['Заказчик'];
+            const table = document.getElementById('departmentTable');
+            const ths = table.querySelectorAll('thead tr:first-child th');
+            for (let i = 1; i < ths.length - 1; i++) headers.push(ths[i].textContent + ' - План', ths[i].textContent + ' - Факт');
+            headers.push('Итого - План', 'Итого - Факт', 'Отклонение');
+            wsData.push(headers);
+            table.querySelectorAll('tbody tr').forEach(row => {
+                const rowData = [];
+                row.querySelectorAll('td').forEach(td => rowData.push(td.textContent));
+                wsData.push(rowData);
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), 'Затраты по отделам');
+            XLSX.writeFile(wb, 'Затраты_по_отделам.xlsx');
+        }
+
+        function exportDetailsToExcel() {
+            const wb = XLSX.utils.book_new();
+            const wsData = [];
+            const headers = ['Направление / Заказчик'];
+            const table = document.getElementById('detailsTable');
+            const ths = table.querySelectorAll('thead tr:first-child th');
+            for (let i = 1; i < ths.length - 1; i++) headers.push(ths[i].textContent + ' - План', ths[i].textContent + ' - Факт');
+            headers.push('Итого - План', 'Итого - Факт', 'Отклонение');
+            wsData.push(headers);
+            table.querySelectorAll('tbody tr').forEach(row => {
+                const rowData = [];
+                row.querySelectorAll('td').forEach(td => rowData.push(td.textContent.trim()));
+                wsData.push(rowData);
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), 'Детализация по разделам');
+            XLSX.writeFile(wb, 'Детализация_по_разделам.xlsx');
+        }
+
+        function initDepartmentsTab(dateRange) {
+            document.getElementById('loading').style.display = 'block';
+            setTimeout(() => {
+                const periods = determinePeriods(dateRange.minDate, dateRange.maxDate);
+                const customers = aggregateDepartmentData(periods);
+                renderDepartmentTable(periods, customers);
+                document.getElementById('loading').style.display = 'none';
+                showMessage(`Загружено записей: ${rawData.length}, период: с ${monthNamesFull[dateRange.minDate.getMonth()]} по ${monthNamesFull[dateRange.maxDate.getMonth()]} ${dateRange.maxDate.getFullYear()}`);
+            }, 100);
+        }
+
+        function initDetailsTab(dateRange) {
+            document.getElementById('loadingDetails').style.display = 'block';
+            setTimeout(() => {
+                const periods = determinePeriods(dateRange.minDate, dateRange.maxDate);
+                const methods = aggregateDetailsData(periods);
+                renderDetailsTable(periods, methods);
+                document.getElementById('loadingDetails').style.display = 'none';
+                document.getElementById('infoBar').textContent = `✅ Загружено записей: ${rawData.length}, период: с ${monthNamesFull[dateRange.minDate.getMonth()]} по ${monthNamesFull[dateRange.maxDate.getMonth()]} ${dateRange.maxDate.getFullYear()} г., направлений: ${methods.length}`;
+            }, 100);
+        }
+
+        function updateForecastTab() {
+            if (rawData.length === 0) return;
+            let planByMonth = new Array(12).fill(0);
+            let factByMonth = new Array(12).fill(0);
+            let lastFactMonthIndex = -1;
+
+            rawData.forEach(d => {
+                const m = d.month - 1;
+                if (m >= 0 && m < 12) {
+                    if (d.criteria === 'План') planByMonth[m] += d.costs;
+                    else if (d.criteria === 'Факт') {
+                        factByMonth[m] += d.costs;
+                        if (d.costs > 0 && m > lastFactMonthIndex) lastFactMonthIndex = m;
+                    }
+                }
+            });
+
+            const now = new Date();
+            const currentMonthIdx = now.getMonth();
+            const currentYear = now.getFullYear();
+            let lastFactYear = currentYear;
+            rawData.forEach(d => {
+                if (d.criteria === 'Факт' && d.costs > 0) {
+                    if (d.year > lastFactYear) lastFactYear = d.year;
+                }
+            });
+
+            let incompleteMonthIndex = -1;
+            if (lastFactYear === currentYear && lastFactMonthIndex === currentMonthIdx) {
+                incompleteMonthIndex = lastFactMonthIndex;
+            }
+
+            let selectedFacts = [];
+            if (selectedForecastMonths.length === 0) {
+                for (let i = 0; i <= lastFactMonthIndex; i++) {
+                    if (factByMonth[i] > 0 && i !== incompleteMonthIndex) {
+                        selectedFacts.push(factByMonth[i]);
+                    }
+                }
+                if (selectedFacts.length === 0 && incompleteMonthIndex >= 0 && factByMonth[incompleteMonthIndex] > 0) {
+                    selectedFacts.push(factByMonth[incompleteMonthIndex]);
+                }
+            } else {
+                selectedForecastMonths.forEach(mNum => {
+                    const idx = mNum - 1;
+                    if (factByMonth[idx] > 0 && idx !== incompleteMonthIndex) {
+                        selectedFacts.push(factByMonth[idx]);
+                    }
+                });
+                if (selectedFacts.length === 0 && selectedForecastMonths.includes(incompleteMonthIndex + 1) && factByMonth[incompleteMonthIndex] > 0) {
+                    selectedFacts.push(factByMonth[incompleteMonthIndex]);
+                }
+            }
+
+            let baseFactForForecast = selectedFacts.length > 0
+                ? selectedFacts.reduce((a, b) => a + b, 0) / selectedFacts.length
+                : 0;
+
+            let totalPlan = planByMonth.reduce((a, b) => a + b, 0);
+            let totalFact = factByMonth.reduce((a, b) => a + b, 0);
+            let cumPlan = 0, cumFact = 0, cumForecast = 0;
+            let dataCumPlan = [], dataCumFact = [], dataCumForecast = [];
+            let dataMonthPlan = [], dataMonthFact = [], dataMonthForecast = [];
+            let forecastStarted = false;
+            let factEndIndex = incompleteMonthIndex >= 0 ? incompleteMonthIndex - 1 : lastFactMonthIndex;
+
+            for (let i = 0; i < 12; i++) {
+                cumPlan += planByMonth[i];
+                cumFact += factByMonth[i];
+                let monthForecast = null;
+                let isIncomplete = false;
+                let isFuture = false;
+
+                if (i < incompleteMonthIndex || (incompleteMonthIndex === -1 && i <= lastFactMonthIndex)) {
+                    monthForecast = null;
+                } else if (i === incompleteMonthIndex) {
+                    isIncomplete = true;
+                    monthForecast = baseFactForForecast;
+                    forecastStarted = true;
+                } else if (i > incompleteMonthIndex && (i > lastFactMonthIndex || incompleteMonthIndex === -1)) {
+                    isFuture = true;
+                    monthForecast = baseFactForForecast;
+                    forecastStarted = true;
+                }
+
+                if (monthForecast !== null) {
+                    if (isIncomplete) cumForecast = cumFact + monthForecast;
+                    else if (isFuture) cumForecast += monthForecast;
+                } else {
+                    cumForecast = cumFact;
+                }
+
+                dataCumPlan.push(cumPlan);
+                dataCumFact.push(cumFact);
+                dataCumForecast.push(forecastStarted ? cumForecast : null);
+                dataMonthPlan.push(planByMonth[i]);
+                dataMonthFact.push(factByMonth[i]);
+                dataMonthForecast.push(monthForecast);
+            }
+
+            let finalForecast = cumForecast;
+            document.getElementById('kpiTotalBudget').textContent = formatNumber(totalPlan / 1000) + ' тыс. руб';
+            document.getElementById('kpiActual').textContent = formatNumber(totalFact / 1000) + ' тыс. руб';
+            document.getElementById('kpiRemaining').textContent = formatNumber((totalPlan - totalFact) / 1000) + ' тыс. руб';
+            document.getElementById('kpiForecast').textContent = formatNumber(finalForecast / 1000) + ' тыс. руб';
+
+            const ctxCum = document.getElementById('cumulativeForecastChart').getContext('2d');
+            if (cumulativeChartInstance) cumulativeChartInstance.destroy();
+            let lastPlanIdx = 11;
+            let lastFactIdx = factEndIndex;
+            let lastForecastIdx = 11;
+
+            cumulativeChartInstance = new Chart(ctxCum, {
+                type: 'line',
+                data: {
+                    labels: monthNames,
+                    datasets: [
+                        { label: 'План (накоп.)', data: dataCumPlan.map(v => v / 1000), borderColor: '#ffd700', backgroundColor: 'rgba(255, 215, 0, 0.1)', borderWidth: 3, tension: 0.3, fill: false, pointRadius: 0 },
+                        { label: 'Факт (накоп.)', data: dataCumFact.map((v, idx) => idx <= factEndIndex ? v / 1000 : null), borderColor: 'rgb(0, 180, 115)', backgroundColor: 'rgba(0, 180, 115, 0.1)', borderWidth: 3, tension: 0.3, fill: true, spanGaps: false, pointRadius: 0 },
+                        { label: 'Прогноз (накоп.)', data: dataCumForecast.map(v => v === null ? null : v / 1000), borderColor: '#60a5fa', borderWidth: 3, borderDash: [8, 4], tension: 0.3, pointBackgroundColor: '#60a5fa', fill: false, spanGaps: false, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 50, right: 90, bottom: 20, left: 20 } },
+                    plugins: {
+                        legend: { labels: { color: '#e0e0e0', font: { size: 14 } } },
+                        tooltip: { callbacks: { label: function(c) { return c.raw === null ? '' : c.dataset.label + ': ' + formatNumber(c.raw) + ' тыс. руб'; } } },
+                        datalabels: {
+                            display: function(context) {
+                                const idx = context.dataIndex;
+                                const dsIdx = context.datasetIndex;
+                                if (dsIdx === 0 && idx === lastPlanIdx) return true;
+                                if (dsIdx === 1 && idx === lastFactIdx) return true;
+                                if (dsIdx === 2 && idx === lastForecastIdx) return true;
+                                return false;
+                            },
+                            color: '#ffffff',
+                            font: { size: 16, weight: 'bold' },
+                            formatter: function(value) { return formatNumber(value); },
+                            anchor: 'end',
+                            align: 'right',
+                            offset: 8,
+                            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                            borderRadius: 6,
+                            padding: { top: 6, bottom: 6, left: 10, right: 10 },
+                            clamp: true
+                        }
+                    },
+                    scales: {
+                        y: { ticks: { color: '#a0aec0', callback: v => formatNumber(v), font: { size: 13 } }, grid: { color: '#2d3748' } },
+                        x: { ticks: { color: '#a0aec0', font: { size: 13 } }, grid: { color: '#2d3748' } }
+                    }
+                }
+            });
+
+            // ГИСТОГРАММА С ПОДПИСЯМИ НА ВСЕХ СТОЛБЦАХ В МЛН РУБ
+            const ctxMonth = document.getElementById('monthlyForecastChart').getContext('2d');
+            if (monthlyForecastChartInstance) monthlyForecastChartInstance.destroy();
+            monthlyForecastChartInstance = new Chart(ctxMonth, {
+                type: 'bar',
+                data: {
+                    labels: monthNames,
+                    datasets: [
+                        { label: 'План', data: dataMonthPlan.map(v => v / 1000), backgroundColor: 'rgba(255, 215, 0, 0.7)', borderColor: '#ffd700', borderWidth: 1 },
+                        { label: 'Факт', data: dataMonthFact.map(v => v / 1000), backgroundColor: 'rgba(0, 180, 115, 0.7)', borderColor: 'rgb(0, 180, 115)', borderWidth: 1 },
+                        { label: 'Прогноз', data: dataMonthForecast.map(v => v === null ? null : v / 1000), backgroundColor: 'rgba(96, 165, 250, 0.7)', borderColor: '#60a5fa', borderWidth: 1 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            top: 80,
+                            right: 20,
+                            bottom: 20,
+                            left: 20
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#e0e0e0', font: { size: 14 } } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(c) {
+                                    if (c.raw === null) return '';
+                                    return c.dataset.label + ': ' + (c.raw / 1000).toFixed(2) + ' млн руб';
+                                }
+                            }
+                        },
+                        datalabels: {
+                            display: true,
+                            anchor: 'end',
+                            align: 'end',
+                            offset: 4,
+                            color: '#ffffff',
+                            font: { size: 14, weight: 'bold' },
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            borderRadius: 4,
+                            padding: { top: 4, bottom: 4, left: 6, right: 6 },
+                            formatter: function(value) {
+                                if (value === null || value === undefined || value === 0) return '';
+                                return (value / 1000).toFixed(2) + ' млн';
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            ticks: {
+                                color: '#a0aec0',
+                                callback: v => (v / 1000).toFixed(0) + ' млн',
+                                font: { size: 12 }
+                            },
+                            grid: { color: '#2d3748' }
+                        },
+                        x: {
+                            ticks: { color: '#a0aec0', font: { size: 13 } },
+                            grid: { color: '#2d3748' }
+                        }
+                    }
+                }
+            });
+
+            const tbody = document.getElementById('forecastTableBody');
+            tbody.innerHTML = '';
+            cumPlan = 0; cumFact = 0; cumForecast = 0;
+            for (let i = 0; i < 12; i++) {
+                cumPlan += planByMonth[i];
+                cumFact += factByMonth[i];
+                let forecast = dataMonthForecast[i];
+                let displayForecast = forecast !== null ? formatNumber(forecast / 1000) : '—';
+                if (forecast !== null) cumForecast += forecast;
+                else cumForecast = cumFact;
+                let deviation = forecast !== null ? (cumForecast - cumPlan) : 0;
+                let deviationClass = '';
+                let deviationText = '—';
+                if (forecast !== null) {
+                    if (i === incompleteMonthIndex) {
+                        deviationClass = 'forecast-partial';
+                        deviationText = (deviation > 0 ? '+' : '') + formatNumber(deviation / 1000) + ' тыс. руб';
+                    } else {
+                        deviationClass = deviation > 0 ? 'forecast-overrun' : 'forecast-safe';
+                        deviationText = (deviation > 0 ? '+' : '') + formatNumber(deviation / 1000) + ' тыс. руб';
+                    }
+                }
+                let rowClass = (i === incompleteMonthIndex) ? 'forecast-partial' : '';
+                tbody.innerHTML += `<tr class="${rowClass}">
+                    <td>${monthNames[i]}</td>
+                    <td>${formatNumber(planByMonth[i] / 1000)}</td>
+                    <td>${formatNumber(factByMonth[i] / 1000)}</td>
+                    <td>${displayForecast}</td>
+                    <td>${formatNumber(cumPlan / 1000)}</td>
+                    <td>${formatNumber(cumFact / 1000)}</td>
+                    <td>${forecast !== null ? formatNumber(cumForecast / 1000) : '—'}</td>
+                    <td class="${deviationClass}">${deviationText}</td>
+                </tr>`;
+            }
+        }
+
+        function showMessage(text, isError = false) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = text;
+            messageDiv.className = isError ? 'error-message' : 'success-message';
+        }
+
+        function initDashboard(dateRange) {
+            updateAllCharts();
+            initDepartmentsTab(dateRange);
+            initDetailsTab(dateRange);
+            updateForecastTab();
+            document.getElementById('dashboardContent').style.display = 'block';
+            document.getElementById('uploadSection').style.display = 'none';
+        }
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('fileName').textContent = 'Файл: ' + file.name;
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('loadingDetails').style.display = 'block';
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const dateRange = processData(workbook);
+                    processedData = { dateRange };
+                    initDashboard(dateRange);
+                } catch (error) {
+                    console.error(error);
+                    showMessage('Ошибка при загрузке файла: ' + error.message, true);
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('loadingDetails').style.display = 'none';
+                }
+            };
+            reader.onerror = function() {
+                showMessage('Ошибка при чтении файла', true);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('loadingDetails').style.display = 'none';
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        document.getElementById('exportButton').addEventListener('click', exportToExcel);
+        document.getElementById('exportDetailsButton').addEventListener('click', exportDetailsToExcel);
+
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById(this.dataset.tab + 'Tab').classList.add('active');
+            });
+        });
+
+        document.querySelectorAll('.filter-section .month-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.filter-section .month-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentMonth = this.dataset.month;
+                const statusText = currentMonth === 'all' ? 'все месяцы' : monthNames[parseInt(currentMonth) - 1];
+                document.getElementById('filterStatusText').textContent = statusText;
+                updateAllCharts();
+            });
+        });
+
+        document.querySelectorAll('#forecastMonthSelector .forecast-month-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const monthVal = this.dataset.month;
+                const allBtn = document.querySelector('#forecastMonthSelector .forecast-month-btn[data-month="all"]');
+
+                if (monthVal === 'all') {
+                    selectedForecastMonths = [];
+                    document.querySelectorAll('#forecastMonthSelector .forecast-month-btn').forEach(b => b.classList.remove('selected'));
+                    this.classList.add('selected');
+                } else {
+                    allBtn.classList.remove('selected');
+                    const mNum = parseInt(monthVal);
+                    const idx = selectedForecastMonths.indexOf(mNum);
+                    if (idx > -1) {
+                        selectedForecastMonths.splice(idx, 1);
+                        this.classList.remove('selected');
+                    } else {
+                        selectedForecastMonths.push(mNum);
+                        this.classList.add('selected');
+                    }
+                    if (selectedForecastMonths.length === 0) {
+                        allBtn.classList.add('selected');
+                    }
+                }
+
+                if (rawData.length > 0) {
+                    updateForecastTab();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
