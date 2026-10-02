@@ -180,7 +180,7 @@
                         <table class="department-table" id="departmentTable"><thead></thead><tbody></tbody></table>
                     </div>
                     <div class="legend-box">🔴 <span>Красным выделены случаи, когда Факт превышает План</span></div>
-                    <button class="export-button" id="exportButton"> Экспорт в Excel</button>
+                    <button class="export-button" id="exportButton">📥 Экспорт в Excel</button>
                 </div>
             </div>
 
@@ -277,7 +277,7 @@
             </div>
 
             <div class="tab-content" id="articlesTab">
-                <div class="info-bar">📊 Прогноз по статьям затрат строится на основе среднего факта выбранных месяцев для каждой статьи.</div>
+                <div class="info-bar"> Прогноз по статьям затрат строится на основе среднего факта выбранных месяцев для каждой статьи.</div>
                 
                 <div class="card" style="margin-bottom: 20px;">
                     <div class="card-title">⚙️ База для прогноза: выберите месяцы (можно несколько)</div>
@@ -318,7 +318,7 @@
 
         const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
         const monthNamesFull = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-        const methodOrder = ['Без бригадные ГИС','Бригадные ГИС','Работа с пластом','Добыча нефти мет.свабирования','Технологическое свабирование'];
+        const methodOrder = ['Безбригадные ГИС','Бригадные ГИС','Работа с пластом','Добыча нефти мет.свабирования','Технологическое свабирование'];
         const customerMapping = [
             { pattern: /УГТМ\s*ОПиГСРС/i, name: 'УГТМ ОПиГСРС' },
             { pattern: /УГТМ\s*ОПиГСБС/i, name: 'УГТМ ОПиГСБС' },
@@ -338,7 +338,7 @@
         ];
 
         const articleMapping = {
-            '4.1.5 - ГИС': ['Бригадные ГИС', 'Без бригадные ГИС', 'Работа с пластом'],
+            '4.1.5 - ГИС': ['Бригадные ГИС', 'Безбригадные ГИС', 'Работа с пластом'],
             '4.1.18 - Свабная добыча': ['Добыча нефти мет.свабирования'],
             '4.3.5 - Тех. сваб': ['Технологическое свабирование']
         };
@@ -389,6 +389,8 @@
                 method: headers.findIndex(h => h.includes('способ') || h.includes('проведения')),
                 criteria: headers.findIndex(h => h.includes('критерий')),
                 month: headers.findIndex(h => h.includes('месяц')),
+                quantity: headers.findIndex(h => h.includes('количство') || h.includes('количество')),
+                price: headers.findIndex(h => h.includes('стоимость')),
                 costs: headers.findIndex(h => h.includes('затраты'))
             };
             rawData = [];
@@ -398,15 +400,37 @@
                 if (!row || row.length === 0) continue;
                 const rawCustomer = colIndex.customer >= 0 ? row[colIndex.customer] : '';
                 const customer = normalizeCustomer(rawCustomer);
-                const method = colIndex.method >= 0 ? String(row[colIndex.method] || '').trim() : '';
+                let method = colIndex.method >= 0 ? String(row[colIndex.method] || '').trim() : '';
+                // Исправляем "Без бригадные" на "Безбригадные"
+                method = method.replace(/Без\s+бригадные/gi, 'Безбригадные');
                 const criteria = colIndex.criteria >= 0 ? String(row[colIndex.criteria] || '').trim() : '';
                 const monthCell = colIndex.month >= 0 ? row[colIndex.month] : null;
+                
                 let costs = 0;
                 if (colIndex.costs >= 0) {
                     const costVal = row[colIndex.costs];
                     if (typeof costVal === 'number') costs = costVal;
                     else if (typeof costVal === 'string') costs = parseFloat(costVal.replace(',', '.')) || 0;
                 }
+                
+                // Если затраты = 0, пытаемся рассчитать как Количество × Стоимость
+                if (costs === 0 && colIndex.quantity >= 0 && colIndex.price >= 0) {
+                    let quantity = 0;
+                    let price = 0;
+                    
+                    const qtyVal = row[colIndex.quantity];
+                    if (typeof qtyVal === 'number') quantity = qtyVal;
+                    else if (typeof qtyVal === 'string') quantity = parseFloat(qtyVal.replace(',', '.')) || 0;
+                    
+                    const priceVal = row[colIndex.price];
+                    if (typeof priceVal === 'number') price = priceVal;
+                    else if (typeof priceVal === 'string') price = parseFloat(priceVal.replace(',', '.')) || 0;
+                    
+                    if (quantity > 0 && price > 0) {
+                        costs = quantity * price;
+                    }
+                }
+                
                 const dateInfo = parseMonthFromDate(monthCell);
                 const isPlan = criteria.toLowerCase().includes('план');
                 const isFact = criteria.toLowerCase().includes('факт');
@@ -890,7 +914,22 @@
             `;
             container.appendChild(articleDiv);
 
-            const forecastData = calculateForecastData(planByMonth, factByMonth, selectedArticleForecastMonths, -1, 8);
+            let lastFactMonthIndex = -1;
+            for (let i = 11; i >= 0; i--) {
+                if (factByMonth[i] > 0) {
+                    lastFactMonthIndex = i;
+                    break;
+                }
+            }
+
+            const now = new Date();
+            const currentMonthIdx = now.getMonth();
+            let incompleteMonthIndex = -1;
+            if (lastFactMonthIndex === currentMonthIdx) {
+                incompleteMonthIndex = currentMonthIdx;
+            }
+
+            const forecastData = calculateForecastData(planByMonth, factByMonth, selectedArticleForecastMonths, incompleteMonthIndex, lastFactMonthIndex);
 
             const canvasIdCum = `articleCumulative_${articleName.replace(/[^a-zA-Z0-9]/g, '')}`;
             const canvasIdMonth = `articleMonthly_${articleName.replace(/[^a-zA-Z0-9]/g, '')}`;
